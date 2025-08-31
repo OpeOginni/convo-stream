@@ -3,10 +3,21 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "scripts": {
+    "start": "bun run index.ts",
+    "dev": "bun --hot index.ts"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "dependencies": {
+    "@aws-sdk/client-transcribe-streaming": "^3.879.0",
+    "@elevenlabs/elevenlabs-js": "^2.13.0",
+    "@openrouter/ai-sdk-provider": "^1.1.2",
+    "express": "^4.18.2",
+    "socket.io": "^4.8.1"
   }
 }

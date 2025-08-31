@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Audio Processing Client</title>
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        .status { font-weight: bold; margin: 10px 0; }
+        button { margin: 5px; padding: 10px; }
+        .transcription-box {
+            width: 100%;
+            height: 200px;
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+            font-family: monospace;
+            font-size: 14px;
+            resize: vertical;
+            overflow-y: auto;
+        }
+        .transcription-box:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎤 Smart Audio Processing Client with AI Conversations</h1>
+    <p>Open browser console (F12) to see real-time logs</p>
+    <p><strong>Note:</strong> AWS Transcribe requires credentials to be configured on the server</p>
+    <p><strong>AI Features:</strong> Speak naturally with pauses - the system buffers your speech for 2 seconds and sends complete thoughts to AI. Includes text-to-speech with interruption detection!</p>
+
+    <div class="status" id="status">Status: Disconnected</div>
+
+    <button id="createSessionBtn">Create Session</button>
+    <button id="startBtn" disabled>🎙️ Start Audio Processing</button>
+    <button id="stopBtn" disabled>⏹️ Stop Audio Processing</button>
+    <label><input type="checkbox" id="transcriptionCheckbox" checked> Enable AWS Transcribe</label>
+
+    <h3>Transcription:</h3>
+    <textarea class="transcription-box" id="transcriptionBox" readonly placeholder="Transcription will appear here as you speak..."></textarea>
+
+    <h3>AI Responses:</h3>
+    <div id="aiResponseContainer" style="margin: 10px 0; padding: 10px; border: 1px solid #007bff; border-radius: 4px; background-color: #e7f3ff; min-height: 60px;">
+        <div id="aiResponseStatus" style="font-style: italic; color: #666;">AI responses will appear here after you finish speaking (2-second pause detection)...</div>
+        <div id="aiResponseText" style="margin-top: 10px; display: none;"></div>
+    </div>
+
+        <script>
+        const socket = io('http://localhost:3000');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const createSessionBtn = document.getElementById('createSessionBtn');
+        const transcriptionCheckbox = document.getElementById('transcriptionCheckbox');
+        const status = document.getElementById('status');
+        const transcriptionBox = document.getElementById('transcriptionBox');
+        const aiResponseContainer = document.getElementById('aiResponseContainer');
+        const aiResponseStatus = document.getElementById('aiResponseStatus');
+        const aiResponseText = document.getElementById('aiResponseText');
+
+        let audioContext;
+        let processor;
+        let stream;
+        let isProcessing = false;
+        let currentSessionId = null;
+        let hasOngoingPartial = false;
+
+        // Socket.IO event handlers
+        socket.on('connect', () => {
+            status.textContent = 'Status: Connected to server';
+            console.log('✅ Connected to server');
+        });
+
+        socket.on('disconnect', () => {
+            status.textContent = 'Status: Disconnected from server';
+            console.log('❌ Disconnected from server');
+            resetState();
+        });
+
+        socket.on('session-created', (data) => {
+            console.log('Session created event received:', data);
+            if (data && data.sessionId) {
+                currentSessionId = data.sessionId;
+                status.textContent = `Status: Session created - ${data.sessionId}`;
+                startBtn.disabled = false;
+                createSessionBtn.disabled = true;
+                console.log('📝 Session created, currentSessionId set to:', currentSessionId);
+
+                // Clear transcription box and reset partial state for new session
+                transcriptionBox.value = '';
+                hasOngoingPartial = false;
+            } else {
+                console.error('❌ Invalid session data received:', data);
+                status.textContent = 'Status: Error - Invalid session data';
+            }
+        });
+
+        socket.on('processing-results', (data) => {
+            // Just log to console, no UI updates
+            console.log('📊 Audio analysis received');
+        });
+
+        socket.on('transcription-result', (result) => {
+            // Log transcription to console
+            const status = result.isPartial ? 'partial' : 'final';
+            const confidence = Math.round(result.confidence * 100);
+            console.log(`🎙️ TRANSCRIPT [${status}]: "${result.transcript}" (${confidence}%)`);
+
+            // Display transcription in the text box
+            if (result.transcript && result.transcript.trim()) {
+                const currentText = transcriptionBox.value;
+
+                if (result.isPartial) {
+                    // For partial results: replace current line or start new line
+                    if (hasOngoingPartial) {
+                        // Replace the current partial line
+                        transcriptionBox.value = currentText.replace(/[^\n]*$/, result.transcript);
+                    } else {
+                        // Start a new line for this partial
+                        transcriptionBox.value = currentText + (currentText ? '\n' : '') + result.transcript;
+                        hasOngoingPartial = true;
+                    }
+                } else {
+                    // For final results: replace the current partial with the final version
+                    if (hasOngoingPartial) {
+                        // Replace the current partial line with final
+                        transcriptionBox.value = currentText.replace(/[^\n]*$/, result.transcript);
+                    } else {
+                        // If no ongoing partial, just append (shouldn't happen normally)
+                        transcriptionBox.value = currentText + (currentText ? '\n' : '') + result.transcript;
+                    }
+                    hasOngoingPartial = false; // Reset for next utterance
+                }
+
+                // Auto-scroll to bottom
+                transcriptionBox.scrollTop = transcriptionBox.scrollHeight;
+            }
+        });
+
+        socket.on('ai-response', (data) => {
+            console.log('🤖 AI Response received:', data);
+
+            // Update status to show AI is responding
+            aiResponseStatus.textContent = 'AI is responding...';
+            aiResponseStatus.style.color = '#007bff';
+
+            // Show the AI response
+            aiResponseText.style.display = 'block';
+            const timestamp = new Date(data.timestamp).toLocaleTimeString();
+            const bufferedInfo = data.bufferedTranscripts ? ' (combined from multiple speech segments)' : '';
+
+            aiResponseText.innerHTML = `
+                <div style="margin-bottom: 10px; padding: 8px; background-color: white; border-radius: 4px; border-left: 4px solid #007bff;">
+                    <strong>You said:</strong> "${data.transcript}"<br>
+                    <strong>AI Response${bufferedInfo}:</strong> ${data.response}<br>
+                    <small style="color: #666;">${timestamp}</small>
+                </div>
+            `;
+
+            // Reset status after showing response
+            setTimeout(() => {
+                aiResponseStatus.textContent = 'AI responses will appear here after you finish speaking (2-second pause detection)...';
+                aiResponseStatus.style.color = '#666';
+            }, 2000);
+        });
+
+        socket.on('ai-response-error', (error) => {
+            console.error('❌ AI Response error:', error);
+            aiResponseStatus.textContent = 'AI Error: ' + error.message;
+            aiResponseStatus.style.color = '#dc3545';
+
+            // Reset status after showing error
+            setTimeout(() => {
+                aiResponseStatus.textContent = 'AI responses will appear here after you finish speaking (2-second pause detection)...';
+                aiResponseStatus.style.color = '#666';
+            }, 3000);
+        });
+
+        socket.on('tts-audio', (data) => {
+            console.log('🎵 TTS audio received:', data);
+            aiResponseStatus.textContent = 'AI is speaking...';
+            aiResponseStatus.style.color = '#28a745';
+
+            // Play the audio
+            try {
+                const audioBlob = new Blob([data.audioData], { type: 'audio/mp3' });
+                const audioUrl = URL.createObjectURL(audioBlob);
+                const audio = new Audio(audioUrl);
+
+                audio.onended = () => {
+                    console.log('🎵 TTS playback completed');
+                    aiResponseStatus.textContent = 'AI responses will appear here after you finish speaking (2-second pause detection)...';
+                    aiResponseStatus.style.color = '#666';
+                    URL.revokeObjectURL(audioUrl);
+                };
+
+                audio.onerror = (error) => {
+                    console.error('❌ TTS playback error:', error);
+                    aiResponseStatus.textContent = 'TTS playback error';
+                    aiResponseStatus.style.color = '#dc3545';
+                    URL.revokeObjectURL(audioUrl);
+                };
+
+                audio.play().catch(error => {
+                    console.error('❌ TTS play error:', error);
+                    aiResponseStatus.textContent = 'Failed to play TTS audio';
+                    aiResponseStatus.style.color = '#dc3545';
+                });
+
+            } catch (error) {
+                console.error('❌ TTS processing error:', error);
+                aiResponseStatus.textContent = 'TTS processing error';
+                aiResponseStatus.style.color = '#dc3545';
+            }
+        });
+
+        socket.on('tts-error', (error) => {
+            console.error('❌ TTS error:', error);
+            aiResponseStatus.textContent = 'TTS Error: ' + error.message;
+            aiResponseStatus.style.color = '#dc3545';
+
+            // Reset status after showing error
+            setTimeout(() => {
+                aiResponseStatus.textContent = 'AI responses will appear here after you finish speaking (2-second pause detection)...';
+                aiResponseStatus.style.color = '#666';
+            }, 3000);
+        });
+
+        socket.on('tts-interrupted', (data) => {
+            console.log('🚫 TTS interrupted by user speech:', data);
+            aiResponseStatus.textContent = 'TTS interrupted by your speech - waiting for response...';
+            aiResponseStatus.style.color = '#ffc107';
+
+            // Reset status after showing interruption
+            setTimeout(() => {
+                aiResponseStatus.textContent = 'AI responses will appear here after you finish speaking (2-second pause detection)...';
+                aiResponseStatus.style.color = '#666';
+            }, 2000);
+        });
+
+        socket.on('ai-interrupted', (data) => {
+            console.log('🚫 AI interrupted by user speech:', data);
+            const interruptionType = data.interruptedTTS && data.interruptedAI
+                ? 'speech and text generation'
+                : data.interruptedTTS
+                ? 'speech generation'
+                : 'text generation';
+
+            aiResponseStatus.textContent = `AI ${interruptionType} interrupted by your speech - generating new response...`;
+            aiResponseStatus.style.color = '#ffc107';
+
+            // Reset status after showing interruption
+            setTimeout(() => {
+                aiResponseStatus.textContent = 'AI responses will appear here after you finish speaking (2-second pause detection)...';
+                aiResponseStatus.style.color = '#666';
+            }, 2000);
+        });
+
+        socket.on('tts-unavailable', (data) => {
+            console.log('🎵 TTS unavailable:', data);
+            aiResponseStatus.textContent = 'TTS: ' + data.message;
+            aiResponseStatus.style.color = '#6c757d';
+
+            // Reset status after showing message
+            setTimeout(() => {
+                aiResponseStatus.textContent = 'AI responses will appear here after you finish speaking (2-second pause detection)...';
+                aiResponseStatus.style.color = '#666';
+            }, 3000);
+        });
+
+        socket.on('processing-started', () => {
+            status.textContent = `Status: Processing active - ${currentSessionId}`;
+            isProcessing = true;
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            console.log('▶️ Processing started');
+        });
+
+        socket.on('processing-stopped', () => {
+            status.textContent = `Status: Processing stopped - ${currentSessionId}`;
+            isProcessing = false;
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            hasOngoingPartial = false; // Reset partial state when stopping
+            console.log('⏹️ Processing stopped');
+        });
+
+        socket.on('error', (error) => {
+            console.error('❌ Socket error:', error);
+            status.textContent = `Status: Error - ${error.message}`;
+
+            // Provide helpful error messages
+            if (error.message && error.message.includes('Session not found')) {
+                console.log('💡 Try creating a session first by clicking "Create Session"');
+            }
+        });
+
+        function resetState() {
+            currentSessionId = null;
+            isProcessing = false;
+            startBtn.disabled = true;
+            stopBtn.disabled = true;
+            createSessionBtn.disabled = false;
+            transcriptionBox.value = '';
+            hasOngoingPartial = false;
+            aiResponseStatus.textContent = 'AI responses will appear here after you finish speaking (2-second pause detection)...';
+            aiResponseStatus.style.color = '#666';
+            aiResponseText.style.display = 'none';
+            aiResponseText.innerHTML = '';
+        }
+
+        // Start microphone and processing
+        async function startMicrophone() {
+            try {
+                console.log('🎙️ Requesting microphone access...');
+                stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        sampleRate: 16000,
+                        channelCount: 1,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
+                });
+
+                audioContext = new AudioContext({ sampleRate: 16000 });
+                const source = audioContext.createMediaStreamSource(stream);
+
+                // Create audio processor for real-time analysis
+                processor = audioContext.createScriptProcessor(1024, 1, 1);
+
+                processor.onaudioprocess = (event) => {
+                    if (!isProcessing) return;
+
+                    const inputBuffer = event.inputBuffer;
+                    const inputData = inputBuffer.getChannelData(0);
+
+                    // Convert Float32Array to Int16Array
+                    const samples = new Int16Array(inputData.length);
+                    for (let i = 0; i < inputData.length; i++) {
+                        samples[i] = Math.round(inputData[i] * 32767);
+                    }
+
+                    // Send audio data to server for real-time processing
+                    socket.emit('audio-data', {
+                        samples: Array.from(samples),
+                        sampleRate: audioContext.sampleRate,
+                        channels: 1,
+                        sessionId: currentSessionId
+                    });
+                };
+
+                source.connect(processor);
+                processor.connect(audioContext.destination);
+
+                console.log('✅ Microphone connected and processing started');
+                socket.emit('start-processing');
+
+            } catch (error) {
+                console.error('❌ Microphone access error:', error);
+                alert('Could not access microphone: ' + error.message);
+            }
+        }
+
+        // Stop microphone and processing
+        function stopMicrophone() {
+            console.log('🛑 Stopping microphone and processing...');
+
+            if (processor) {
+                processor.disconnect();
+                processor = null;
+            }
+
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+
+            if (audioContext && audioContext.state !== 'closed') {
+                audioContext.close();
+                audioContext = null;
+            }
+
+            socket.emit('stop-processing');
+            console.log('✅ Microphone stopped');
+        }
+
+        // Button event handlers
+        createSessionBtn.addEventListener('click', () => {
+            const userId = 'user_' + Date.now(); // Auto-generate user ID
+            const languageCode = 'en-US'; // Default language
+
+            console.log('Sending start-session with:', {
+                userId: userId,
+                languageCode: languageCode
+            });
+
+            socket.emit('start-session', {
+                userId: userId,
+                languageCode: languageCode
+            });
+
+            status.textContent = 'Status: Creating session...';
+            console.log(`📝 Creating session for user: ${userId} (${languageCode})`);
+        });
+
+        startBtn.addEventListener('click', () => {
+            console.log('Start button clicked, currentSessionId:', currentSessionId);
+
+            if (!currentSessionId) {
+                alert('Please create a session first');
+                console.error('❌ No session ID available');
+                return;
+            }
+
+            const enableTranscription = transcriptionCheckbox.checked;
+            console.log('Sending start-processing with:', {
+                sessionId: currentSessionId,
+                enableTranscription: enableTranscription
+            });
+
+            socket.emit('start-processing', {
+                sessionId: currentSessionId,
+                enableTranscription: enableTranscription
+            });
+
+            // Start microphone after confirming session
+            startMicrophone();
+        });
+
+        stopBtn.addEventListener('click', () => {
+            if (!currentSessionId) return;
+
+            stopMicrophone();
+
+            socket.emit('stop-processing', {
+                sessionId: currentSessionId
+            });
+        });
+    </script>
+</body>
+</html>
