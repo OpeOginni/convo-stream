@@ -8,7 +8,8 @@
     "dev": "bun --hot index.ts"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/ws": "^8.5.10"
   },
   "peerDependencies": {
     "typescript": "^5"
@@ -18,6 +19,7 @@
     "@elevenlabs/elevenlabs-js": "^2.13.0",
     "@openrouter/ai-sdk-provider": "^1.1.2",
     "express": "^4.18.2",
-    "socket.io": "^4.8.1"
+    "socket.io": "^4.8.1",
+    "ws": "^8.18.0"
   }
 }

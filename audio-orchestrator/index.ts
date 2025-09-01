@@ -5,7 +5,7 @@ import {
   isTranscriptionActive,
   getActiveTranscriptionCount,
   type TranscriptionResult,
-} from './aws-transcribe/index';
+} from './openai-transcribe/index';
 
 // Import AI response generation
 import {
@@ -27,17 +27,18 @@ import { createServer } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import type { LanguageCode } from '@aws-sdk/client-transcribe-streaming';
+// OpenAI language codes (subset of supported languages)
+type OpenAILanguageCode = 'en' | 'es' | 'fr' | 'de' | 'it' | 'pt' | 'ja' | 'ko' | 'zh';
 
-console.log('🔧 Loading AWS Transcribe module...');
+console.log('🔧 Loading OpenAI Transcribe module...');
 
-// Check AWS credentials on startup
-const hasAWSCredentials = process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY;
-if (hasAWSCredentials) {
-  console.log('✅ AWS credentials found - transcription enabled');
+// Check OpenAI API key on startup
+const hasOpenAIKey = process.env.OPENAI_API_KEY;
+if (hasOpenAIKey) {
+  console.log('✅ OpenAI API key found - transcription enabled');
 } else {
-  console.log('⚠️  No AWS credentials found - transcription disabled');
-  console.log('💡 Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY to enable transcription');
+  console.log('⚠️  No OpenAI API key found - transcription disabled');
+  console.log('💡 Set OPENAI_API_KEY to enable transcription');
 }
 
 interface AudioFrame {
@@ -65,7 +66,7 @@ interface AudioProcessingSession {
   socket: Socket;
   isProcessing: boolean;
   startTime: number;
-  languageCode?: LanguageCode;
+  languageCode?: OpenAILanguageCode;
   transcriptBuffer: BufferedTranscript[];
   aiResponseTimer?: Timer;
   isTTSPlaying: boolean;
@@ -351,21 +352,21 @@ const startSmartTranscription = async (sessionId: string, userId: string) => {
   const session = sessions.get(sessionId);
   if (!session) return;
 
-  // Check if AWS credentials are available
-  if (!hasAWSCredentials) {
-    console.log(`🎤 Speech detected but AWS credentials not configured - skipping transcription`);
+  // Check if OpenAI API key is available
+  if (!hasOpenAIKey) {
+    console.log(`🎤 Speech detected but OpenAI API key not configured - skipping transcription`);
     return;
   }
 
   console.log(`🎤 Starting smart transcription for ${userId} (${sessionId})`);
 
   try {
-    console.log(`🚀 Actually starting AWS Transcribe session for ${userId}`);
+    console.log(`🚀 Actually starting OpenAI Transcribe session for ${userId}`);
 
     await startTranscription(
       sessionId,
       userId,
-      session.languageCode || 'en-US',
+      session.languageCode || 'en',
       16000,
       {
         onResult: async (result: TranscriptionResult) => {
@@ -507,7 +508,7 @@ const stopSmartTranscription = async (sessionId: string) => {
       session.aiResponseTimer = undefined;
     }
 
-    console.log(`🛑 Calling AWS stop transcription for ${sessionId}`);
+    console.log(`🛑 Calling OpenAI stop transcription for ${sessionId}`);
     stopTranscription(sessionId);
     vadState.transcriptionStarted = false;
     vadState.isActive = false;
@@ -605,7 +606,7 @@ const processAudioFrame = async (frame: AudioFrame, sessionId?: string): Promise
 /**
  * Handle session creation
  */
-const handleStartSession = async (socket: Socket, data: { userId: string, languageCode?: LanguageCode }) => {
+const handleStartSession = async (socket: Socket, data: { userId: string, languageCode?: OpenAILanguageCode }) => {
   if (!data || !data.userId) {
     socket.emit('error', {
       message: 'Invalid user data'
@@ -621,7 +622,7 @@ const handleStartSession = async (socket: Socket, data: { userId: string, langua
       socket,
       isProcessing: false,
       startTime: Date.now(),
-      languageCode: data.languageCode || 'en-US',
+      languageCode: data.languageCode || 'en',
       transcriptBuffer: [],
       isTTSPlaying: false,
       isAIGenerating: false
