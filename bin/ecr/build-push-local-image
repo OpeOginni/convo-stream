@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# Build image for local use and optionally push to Docker Hub
+
+docker build -t convo-stream:latest .
+
+docker push convo-stream:latest
+
+

@@ -1,303 +1,278 @@
-# 🎵 Smart Audio Processing with Voice Activity Detection
+# Audio Orchestrator
 
-A minimal real-time audio processing system using functional programming that **automatically** starts/stops transcription based on voice activity, saving AWS costs and providing intelligent speech detection.
+A real-time conversational AI system with voice input, transcription, AI responses, and text-to-speech output.
 
-## ✨ Features
+## Features
 
-- 🎤 **Smart Voice Activity Detection (VAD)** - Auto-detects when you speak
-- 📝 **Auto transcription** - Starts only when speech is detected
-- ⏱️ **Auto-stop after 4s silence** - Saves AWS costs
-- 🔧 **Functional programming** - No classes, pure functions only
-- 📊 **Real-time audio analysis** (volume, voice detection)
-- 📝 **Console logging only** - Clean, minimal interface
-- 🎯 **Zero manual control** - Just speak and it works!
+- 🎤 Real-time voice transcription using AWS Transcribe
+- 🤖 AI-powered responses using OpenRouter
+- 🔊 Text-to-speech using Eleven Labs
+- 🚫 Smart interruption detection and cancellation
+- 📦 Buffered transcript processing
+- ⚡ Built with Bun for fast performance
 
-## 🚀 Quick Start
+## Quick Start
 
-### 1. Install Dependencies
-```bash
-bun install
-```
+### Local Development
 
-### 2. Set Up AWS Credentials
-Create a `.env` file:
-```bash
-AWS_REGION=us-east-1
-AWS_ACCESS_KEY_ID=your-access-key-id
-AWS_SECRET_ACCESS_KEY=your-secret-access-key
-```
+1. **Install dependencies:**
+   ```bash
+   bun install
+   ```
 
-### 3. Start the Server
-```bash
-bun run start
-```
+2. **Set up environment variables:**
+   Create a `.env` file with your API keys:
+   ```bash
+   OPENROUTER_API_KEY=your_openrouter_api_key_here
+   ELEVENLABS_API_KEY=your_elevenlabs_api_key_here
+   AWS_ACCESS_KEY_ID=your_aws_access_key_id
+   AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key
+   ```
 
-### 4. Open Client
-Open `client-example.html` in your browser and press F12 to see console logs!
+3. **Run development server:**
+   ```bash
+   bun run dev
+   ```
 
-## 🎯 How It Works
+4. **Open browser:**
+   Navigate to `http://localhost:3000`
 
-### Smart Architecture
-```
-Browser → Socket.IO → Functional Server → Voice Activity Detection
-   ↓            ↓             ↓                     ↓
-Console    Messages      Analysis              Smart Control
-                                                ↙        ↘
-                                      Start AWS Transcribe  ← 4s Timer
-```
+### Docker Setup
 
-### Intelligent Audio Flow
-```
-🎙️ You Speak → 🎵 Audio Analysis → 🧠 Voice Detection → 📝 Auto-Start Transcription
-                                                       ↘
-                                                4s Silence → 🔇 Auto-Stop Transcription
-```
+1. **Using Docker Compose (Recommended):**
+   ```bash
+   # From the parent directory (convo-stream/)
+   docker-compose up --build
+   ```
 
-## 📡 Simple API
+2. **Using Docker directly:**
+   ```bash
+   cd audio-orchestrator
+   docker build -t audio-orchestrator .
+   docker run -p 3000:3000 --env-file .env audio-orchestrator
+   ```
+
+### Environment Variables
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `OPENROUTER_API_KEY` | API key for AI responses | Yes |
+| `ELEVENLABS_API_KEY` | API key for text-to-speech | Yes |
+| `AWS_ACCESS_KEY_ID` | AWS access key for transcription | Yes |
+| `AWS_SECRET_ACCESS_KEY` | AWS secret key for transcription | Yes |
+| `PORT` | Server port (default: 3000) | No |
+
+## API Endpoints
+
+- `GET /` - Main client interface
+- `GET /health-check` - Health check
+- `GET /status` - Server status
+- `GET /sessions` - Active sessions
+
+## Socket.IO Events
 
 ### Client → Server
-- `start-session` - Create session (auto-generated)
-- `start-processing` - Start mic + transcription
-- `stop-processing` - Stop everything
+- `start-session` - Create new session
+- `start-processing` - Begin audio processing
+- `stop-processing` - Stop audio processing
+- `audio-data` - Send audio data
 
 ### Server → Client
-- `session-created` - Session ready
-- `processing-started/stopped` - Status updates
+- `session-created` - Session creation confirmation
+- `transcription-result` - Real-time transcription
+- `ai-response` - AI-generated response
+- `tts-audio` - Text-to-speech audio data
+- `ai-interrupted` - Interruption notification
 
-## 🎤 Audio Processing
+## Architecture
 
-### Functional Analysis
-```typescript
-const analyzeAudio = (frame: AudioFrame) => {
-  // Calculate volume (RMS)
-  const volume = calculateRMS(frame.samples);
-
-  // Detect voice activity
-  const isVoiceActive = volume > 5;
-
-  return { volume, isVoiceActive };
-};
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Web Client    │◄──►│  Audio Server    │◄──►│   AI Services    │
+│                 │    │                  │    │                 │
+│ • Voice Input   │    │ • WebSocket       │    │ • OpenRouter    │
+│ • Real-time UI  │    │ • Express         │    │ • Eleven Labs   │
+│ • Audio Output  │    │ • Session Mgmt    │    │ • AWS Transcribe│
+└─────────────────┘    └──────────────────┘    └─────────────────┘
 ```
 
-### Real-Time Metrics
-- **Volume**: 0-100% (Root Mean Square)
-- **Voice Detection**: Boolean threshold
-- **Sample Rate**: 16kHz optimized for speech
-- **Buffer**: 1,024 samples (~64ms chunks)
+## Development
 
-## 📝 AWS Transcribe Integration
+### Scripts
 
-### Pure Functions
-```typescript
-// Convert audio to PCM
-const convertToPCM = (samples: Int16Array): Uint8Array => { ... }
+- `bun run dev` - Development server with hot reload
+- `bun run build` - Build for production (uses tsconfig.json configuration)
+- `bun run start` - Start production server
 
-// Create streaming iterator
-const createAudioStream = (sessionId: string): AsyncIterable => { ... }
+### Configuration
 
-// Start transcription
-const startTranscription = async (sessionId, userId, callbacks) => { ... }
-```
+Build and development settings are configured in `tsconfig.json` under the `"bun"` field:
 
-### Features
-- ✅ **Functional approach** - Pure functions, no side effects
-- ✅ **Async iteration** - Streams audio to AWS
-- ✅ **Error handling** - Graceful failure recovery
-- ✅ **Session management** - Automatic cleanup
-
-## 📊 Console Output
-
-### Audio Analysis
-```
-📊 Analysis: Volume 45% | Voice: DETECTED | ZCR: 0.123
-📊 Analysis: Volume 12% | Voice: Silent | ZCR: 0.089
-```
-
-### Smart Transcription Results
-```
-🎙️ TRANSCRIPT: "Hello" (0.85)
-🎙️ TRANSCRIPT: "Hello, how are you today?" (0.92)
-🎙️ TRANSCRIPT: "What can I help you with?" (0.89)
-```
-
-### Smart VAD Logs
-```
-📝 Created session session_user123_1234567890 for user user123 with smart VAD
-▶️  Started smart processing for session session_user123_1234567890 (VAD enabled)
-🎤 Starting smart transcription for user123 (session_user123_1234567890)
-📊 Analysis: Volume 45% | Voice: DETECTED
-🎙️ TRANSCRIPT: "Hello, how are you today?" (0.92)
-🔇 Stopping smart transcription for user123 (session_user123_1234567890) - silence timeout
-```
-
-## 🎮 Smart Usage
-
-1. **Open `client-example.html`** in browser
-2. **Press F12** to open developer console
-3. **Click "Create Session"** (auto-generates user ID)
-4. **Click "Start Audio Processing"**
-5. **Just speak normally** - transcription starts automatically!
-6. **Stop speaking for 4 seconds** - transcription stops automatically
-7. **Watch console logs** for intelligent analysis & transcription
-
-### How Smart VAD Works:
-- 🎤 **Voice detected** → Auto-starts transcription
-- 🔇 **4s silence** → Auto-stops transcription (saves AWS costs!)
-- 📊 **Continuous monitoring** → Real-time voice activity analysis
-- 💡 **Zero manual control** → Just speak and it works!
-
-## 🔧 Technical Details
-
-### Smart Voice Activity Detection (VAD)
-```typescript
-// Enhanced VAD with debouncing
-const isVoiceActive = volume > 5;
-
-// Smart transcription control with debouncing
-if (isVoiceActive) {
-  consecutiveVoiceFrames++;
-  if (consecutiveVoiceFrames >= 3 && timeSinceLastStart > 2000) {
-    startTranscription();  // Only after 3+ voice frames + 2s cooldown
-  }
-  resetSilenceTimer();
-} else {
-  consecutiveSilenceFrames++;
-  if (consecutiveSilenceFrames >= 5) {
-    startSilenceTimer();   // Auto-stop after sustained silence
+```json
+{
+  "bun": {
+    "build": {
+      "target": "node",
+      "outdir": "./dist",
+      "entrypoints": ["./index.ts"]
+    },
+    "dev": {
+      "port": 3000,
+      "hostname": "0.0.0.0"
+    }
   }
 }
 ```
 
-### Functional Programming
-- ✅ **Pure functions** - No class instances
-- ✅ **Global state** - Simple Maps for sessions + VAD state
-- ✅ **Function composition** - Modular VAD + transcription logic
-- ✅ **Callback pattern** - For async AWS operations
+### Project Structure
 
-### Audio Processing
-- **Web Audio API** - Browser-native audio
-- **16kHz mono** - Optimized for speech transcription
-- **Echo cancellation** - Clean audio input
-- **Real-time chunks** - 64ms processing windows
-- **Smart VAD** - Intelligent voice detection with debouncing
-
-### VAD Improvements (Fixed Concurrent Streams Error)
-- **Debouncing**: 3+ consecutive voice frames required to start transcription
-- **Cooldown**: 2-second minimum between transcription starts
-- **Silence Detection**: 5+ consecutive silence frames to trigger stop
-- **State Tracking**: Consecutive frame counters prevent false triggers
-- **Error Recovery**: Automatic state reset on transcription failures
-
-### AWS Integration
-- **PCM encoding** - AWS required format
-- **Async iterables** - Streaming interface
-- **Smart start/stop** - Only transcribe when speaking
-- **Cost optimization** - Auto-stop saves AWS charges
-- **Error recovery** - Automatic retry logic
-- **Session cleanup** - Memory management
-
-## 🚨 Error Handling
-
-### Microphone Issues
-```javascript
-// Browser console will show:
-"❌ Microphone access error: NotAllowedError"
+```
+audio-orchestrator/
+├── index.ts              # Main server file
+├── client-example.html   # Web client
+├── ai/
+│   ├── openrouter.ts     # AI response generation
+│   └── eleven-lab.ts     # Text-to-speech
+├── aws-transcribe/       # AWS transcription
+├── package.json          # Dependencies
+├── dockerfile           # Docker build
+└── bun.lock             # Bun lockfile
 ```
 
-### AWS Issues
-```javascript
-// Server console will show:
-"❌ AWS Transcribe error: Invalid credentials"
-```
+## Docker Environment Variables
 
-### Network Issues
-```javascript
-// Automatic reconnection via Socket.IO
-"❌ Disconnected from server"
-"✅ Connected to server"
-```
+When using Docker, you can pass environment variables in several ways:
 
-## 🎯 Smart Workflow
+1. **Environment variables in docker-compose.yml:**
+   ```yaml
+   environment:
+     - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+   ```
 
-1. **Browser loads** → Connects to Socket.IO server
-2. **Create Session** → Auto-generates session ID with VAD state
-3. **Start Processing** → Requests microphone access
-4. **Smart Monitoring** → Voice activity detection begins
-5. **🎤 Speak** → Auto-starts AWS transcription instantly
-6. **🔇 Silence 4s** → Auto-stops transcription (cost savings!)
-7. **Repeat** → System continuously monitors and adapts
-8. **Stop Processing** → Clean shutdown with state cleanup
+2. **Using .env file:**
+   ```bash
+   # Create .env file in audio-orchestrator/
+   OPENROUTER_API_KEY=your_key_here
+   ```
 
-## 🛠️ Troubleshooting
+3. **Command line:**
+   ```bash
+   docker run -e OPENROUTER_API_KEY=your_key_here -p 3000:3000 audio-orchestrator
+   ```
 
-### No Audio
-- Check microphone permissions in browser
-- Verify Web Audio API support
+## Troubleshooting
 
-### No Transcription
-- Verify AWS credentials in `.env`
-- Check AWS region settings
-- Confirm IAM permissions for Transcribe
+### Common Issues
 
-### Connection Issues
-- Ensure server is running on port 3000
-- Check firewall settings
-- Verify Socket.IO connection
+1. **"ELEVENLABS_API_KEY environment variable not found"**
+   - Make sure your `.env` file exists and contains the correct API key
+   - Check that the environment variable is being passed to Docker
 
-### Test Script
+2. **"OPENROUTER_API_KEY environment variable not found"**
+   - Same as above, ensure API key is properly configured
+
+3. **"AWS credentials not configured"**
+   - Ensure AWS credentials are set for transcription functionality
+
+4. **Build fails**
+   - Make sure Bun is properly installed
+   - Try `bun install` to refresh dependencies
+
+## Deployment
+
+For AWS architecture, ECR build/push, CloudFormation stacks, and production debugging, see the project root `README.md`.
+
+### Local builds
+
+- Build and load locally (Apple Silicon arm64):
+  ```bash
+  bin/ecr/build-push-local-image
+  ```
+
+- Push to Docker Hub (optional):
+  ```bash
+  DOCKERHUB_REPO="<dockerhub-username>/convo-stream" bin/ecr/build-push-local-image
+  ```
+
+## Production Healthcheck Notes
+
+We use an internal health endpoint `GET /health-check` and a bash script `bin/health-check` that curls the endpoint and exits non‑zero on failure.
+
+Current script:
 ```bash
-# Run the automated test script
-node test-connection.js
+#!/usr/bin/env bash
+curl -fsS http://localhost:3000/health-check || exit 1
 ```
 
-The test script will:
-- ✅ Connect to the server
-- ✅ Create a test session
-- ✅ Start/stop processing
-- ✅ Send test audio data
-- ✅ Verify all functionality works
+What we settled on:
 
-### Specific Error Solutions
+- Dockerfile: ensure the script is executable (and curl is available)
+  ```Dockerfile
+  RUN (apt-get update && apt-get install -y curl ca-certificates && rm -rf /var/lib/apt/lists/*) || (apk update && apk add --no-cache curl ca-certificates)
+  RUN chmod +x bin/health-check
+  ```
 
-#### ❌ `LimitExceededException: You have reached your limit of concurrent streams, 25`
-**Cause:** Voice Activity Detection was too sensitive, creating multiple transcription sessions rapidly
-**Solution:**
-- ✅ **Implemented debouncing**: Requires 3+ consecutive voice frames before starting transcription
-- ✅ **Added cooldown**: 2-second minimum between transcription starts
-- ✅ **Enhanced silence detection**: Requires 5+ consecutive silence frames before stopping
-- ✅ **Better state management**: Prevents multiple concurrent sessions
+- ECS TaskDefinition healthcheck (invoke via bash, matching the template):
+  ```yaml
+  Command:
+    - 'CMD-SHELL'
+    - 'bash /app/bin/health-check'
+  ```
 
-#### ❌ `TypeError: undefined is not an object (evaluating 'data.sessionId')`
-**Cause:** Session creation failed or client sent malformed data
-**Solution:**
-1. Check server console for session creation errors
-2. Ensure client is connected before creating session
-3. Verify client JavaScript console for errors
-4. Run `node test-connection.js` to test basic connectivity
+- docker-compose healthcheck (local):
+  ```yaml
+  healthcheck:
+    test: ["CMD", "bin/health-check"]
+  ```
 
-#### ❌ `Session not found`
-**Cause:** Trying to start processing before session creation completes
-**Solution:**
-1. Always click "Create Session" first
-2. Wait for "Session created" message in status
-3. Then click "Start Audio Processing"
-4. Check browser console for timing issues
+## Production Debugging
 
-## 📝 Code Structure
+See root `README.md` for `aws ecs execute-command` usage and examples.
 
+## CloudFormation Parameters: ECR Image and SSM Parameter ARNs
+
+Before deploying, update the image and SSM parameter references in `aws/cfn/fargate-service/template.yaml` to match your account and parameter names, or pass them as parameters when deploying.
+
+Relevant parameters (defaults shown in the template):
+
+```yaml
+Parameters:
+  EcrImage:
+    Type: String
+    Default: '<your-account-id>.dkr.ecr.<your-region>.amazonaws.com/convo-stream'
+  SecretsAWSAccessKeyId:
+    Type: String
+    Default: 'arn:aws:ssm:<region>:<account-id>:parameter/convo-stream/AWS_ACCESS_KEY_ID'
+  SecretsSecretAccessKey:
+    Type: String
+    Default: 'arn:aws:ssm:<region>:<account-id>:parameter/convo-stream/AWS_SECRET_ACCESS_KEY'
+  SecretsOpenrouterApiKey:
+    Type: String
+    Default: 'arn:aws:ssm:<region>:<account-id>:parameter/convo-stream/OPENROUTER_API_KEY'
+  SecretsElevenlabsApiKey:
+    Type: String
+    Default: 'arn:aws:ssm:<region>:<account-id>:parameter/convo-stream/ELEVENLABS_API_KEY'
 ```
-📁 aws-transcribe/
-  └── index.ts          # Functional AWS Transcribe functions
 
-📄 index.ts             # Functional server (no classes)
+Options to update:
+- Edit the `Default` values in the template file for your environment; or
+- Supply overrides when deploying the stack (recommended for multi-env setups).
 
-📄 client-example.html  # Simple console-based client
-
-📄 package.json         # Dependencies
+Example (if deploying via AWS CLI directly):
+```bash
+aws cloudformation deploy \
+  --stack-name ConvoStreamFargateService \
+  --template-file aws/cfn/fargate-service/template.yaml \
+  --parameter-overrides \
+    EcrImage=<your-account-id>.dkr.ecr.<your-region>.amazonaws.com/convo-stream:latest \
+    SecretsAWSAccessKeyId=arn:aws:ssm:<region>:<account-id>:parameter/convo-stream/AWS_ACCESS_KEY_ID \
+    SecretsSecretAccessKey=arn:aws:ssm:<region>:<account-id>:parameter/convo-stream/AWS_SECRET_ACCESS_KEY \
+    SecretsOpenrouterApiKey=arn:aws:ssm:<region>:<account-id>:parameter/convo-stream/OPENROUTER_API_KEY \
+    SecretsElevenlabsApiKey=arn:aws:ssm:<region>:<account-id>:parameter/convo-stream/ELEVENLABS_API_KEY \
+  --capabilities CAPABILITY_NAMED_IAM
 ```
 
----
 
-**🎉 Simple, functional, and powerful!**
+## License
 
-Your audio processing system now uses pure functional programming with AWS Transcribe for real-time speech recognition. Everything logs to the console - no UI complexity, just clean audio processing! 🚀
+MIT

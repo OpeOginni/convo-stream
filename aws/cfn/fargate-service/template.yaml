@@ -1,0 +1,224 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: |
+  Task Definition File
+  Fargate Service
+  Execution Role
+  Task Role
+
+Parameters:
+  NetworkingStack:
+    Type: String
+    Description: This is our base layer of networking components eg. VPC
+    Default: ConvoStreamNet
+  ClusterStack:
+    Type: String
+    Description: This is our cluster layer eg. ECS Cluster, ALB
+    Default: ConvoStreamCluster
+  ContainerPort:
+    Type: Number
+    Default: 3000
+  ServiceCpu:
+    Type: String
+    Default: '256'
+  ServiceMemory:
+    Type: String
+    Default: '512'
+  ContainerName:
+    Type: String
+    Default: 'audio-orchestrator'
+  ServiceName:
+    Type: String
+    Default: audio-orchestrator
+  TaskFamily:
+    Type: String
+    Default: audio-orchestrator
+  EcrImage:
+    Type: String
+    Default: '539608377039.dkr.ecr.eu-central-1.amazonaws.com/convo-stream'
+  SecretsAWSAccessKeyId:
+    Type: String
+    Default: 'arn:aws:ssm:eu-central-1:539608377039:parameter/convo-stream/AWS_ACCESS_KEY_ID'
+  SecretsSecretAccessKey:
+    Type: String
+    Default: 'arn:aws:ssm:eu-central-1:539608377039:parameter/convo-stream/AWS_SECRET_ACCESS_KEY'
+  SecretsOpenrouterApiKey:
+    Type: String
+    Default: 'arn:aws:ssm:eu-central-1:539608377039:parameter/convo-stream/OPENROUTER_API_KEY'
+  SecretsElevenlabsApiKey:
+    Type: String
+    Default: 'arn:aws:ssm:eu-central-1:539608377039:parameter/convo-stream/ELEVENLABS_API_KEY'
+
+Resources:
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: 'convo-stream'
+      RetentionInDays: 30
+  FargateService:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - LogGroup
+    Properties:
+      Cluster: 
+        Fn::ImportValue:
+          !Sub "${ClusterStack}ClusterName"
+      DeploymentController:
+        Type: ECS
+      DesiredCount: 1
+      EnableECSManagedTags: true
+      EnableExecuteCommand: true
+      HealthCheckGracePeriodSeconds: 0
+      LaunchType: FARGATE
+      LoadBalancers:
+        - TargetGroupArn:
+            Fn::ImportValue:
+              !Sub "${ClusterStack}AudioOrchestratorTGArn"
+          ContainerName: 'audio-orchestrator'
+          ContainerPort: !Ref ContainerPort
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: 'ENABLED'
+          SecurityGroups:
+              - Fn::ImportValue:
+                  !Sub "${ClusterStack}SerivceSecurityGroupId"          
+          Subnets:
+            Fn::Split:
+              - ","
+              - Fn::ImportValue:
+                  !Sub "${NetworkingStack}PublicSubnetIds"
+      PlatformVersion: LATEST
+      PropagateTags: SERVICE
+      ServiceConnectConfiguration:
+        Enabled: true
+        Namespace: "convo-stream"
+        Services:
+          - DiscoveryName: audio-orchestrator
+            PortName: audio-orchestrator
+            ClientAliases:
+              - Port: !Ref ContainerPort
+      ServiceName: !Ref ServiceName
+      TaskDefinition: !Ref TaskDefinition
+  TaskDefinition:
+    # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ecs-taskdefinition.html
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Ref TaskFamily
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      NetworkMode: 'awsvpc'
+      Cpu: !Ref ServiceCpu
+      Memory: !Ref ServiceMemory
+      RequiresCompatibilities:
+        - 'FARGATE'
+      ContainerDefinitions:
+        - Name: 'xray'
+          Image: 'public.ecr.aws/xray/aws-xray-daemon'
+          Essential: true
+          User: '1337'
+          PortMappings:
+            - Name: 'xray'
+              ContainerPort: 2000
+              Protocol: 'udp'
+        - Name: 'audio-orchestrator'
+          Image: !Ref EcrImage 
+          Essential: true
+          HealthCheck:
+            Command:
+              - 'CMD-SHELL'
+              - 'bash /app/bin/health-check'
+            Interval: 30
+            Timeout: 6
+            Retries: 3
+            StartPeriod: 60
+          PortMappings:
+            - Name: !Ref ContainerName
+              ContainerPort: !Ref ContainerPort
+              Protocol: 'tcp'
+              AppProtocol: 'http'
+          LogConfiguration:
+            LogDriver: 'awslogs'
+            Options:
+              awslogs-group: 'convo-stream'
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: !Ref ServiceName
+          Environment:
+            - Name: 'AWS_REGION'
+              Value: !Ref AWS::Region
+          Secrets:
+            - Name: 'AWS_ACCESS_KEY_ID'
+              ValueFrom: !Ref SecretsAWSAccessKeyId
+            - Name: 'AWS_SECRET_ACCESS_KEY'
+              ValueFrom: !Ref SecretsSecretAccessKey
+            - Name: 'OPENROUTER_API_KEY'
+              ValueFrom: !Ref SecretsOpenrouterApiKey
+            - Name: 'ELEVENLABS_API_KEY'
+              ValueFrom: !Ref SecretsElevenlabsApiKey
+  ExecutionRole:
+    # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-iam-role.html
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: AudioOrchestratorServiceExecutionRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service: 'ecs-tasks.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: 'audio-orchestrator-execution-policy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: 'VisualEditor0'
+                Effect: 'Allow'
+                Action:
+                  - 'ecr:GetAuthorizationToken'
+                  - 'ecr:BatchCheckLayerAvailability'
+                  - 'ecr:GetDownloadUrlForLayer'
+                  - 'ecr:BatchGetImage'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: '*'
+              - Sid: 'VisualEditor1'
+                Effect: 'Allow'
+                Action:
+                  - 'ssm:GetParameters'
+                  - 'ssm:GetParameter'
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/convo-stream/*'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+  TaskRole:
+    # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-iam-role.html
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service: 'ecs-tasks.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: 'audio-orchestrator-task-policy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: 'VisualEditor0'
+                Effect: 'Allow'
+                Action:
+                  - ssmmessages:CreateControlChannel
+                  - ssmmessages:CreateDataChannel
+                  - ssmmessages:OpenControlChannel
+                  - ssmmessages:OpenDataChannel
+                Resource: '*'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+        - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+Outputs:
+  ServiceName:
+    Value: !GetAtt  FargateService.Name
+    Export: 
+      Name: !Sub "${AWS::StackName}ServiceName"
+
+  

@@ -1,0 +1,186 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: |
+  The networking and cluster configuration to support fargate containers
+  - ECS Fargate Cluster
+  - Application Load Balanacer (ALB)
+    - ipv4 only
+    - internet facing
+    - certificate attached from Amazon Certification Manager (ACM)
+  - ALB Security Group
+  - HTTPS Listerner
+    - send naked domain to audio-orchestrator Target Group
+  - HTTP Listerner
+    - redirects to HTTPS Listerner
+  - AudioOrchestrator Target Group
+
+Parameters:
+  NetworkingStack:
+    Type: String
+    Description: This is our base layer of networking components eg. VPC
+    Default: ConvoStreamNet
+  CertificateStack:
+    Type: String
+    Description: Stack name that exports the ACM CertificateArn
+    Default: ConvoStreamCert
+    # HC Stands for Health Check
+  #AudioOrchestrator ------
+  AudioOrchestratorPort:
+    Type: Number
+    Default: 3000
+  AudioOrchestratorHealthCheckIntervalSeconds:
+    Type: String
+    Default: 15
+  AudioOrchestratorHealthCheckPath:
+    Type: String
+    Default: "/health-check"
+  UpdatedAudioOrchestratorHealthCheckPort:
+    Type: String
+    Default: 3000
+  AudioOrchestratorHealthCheckProtocol:
+    Type: String
+    Default: HTTP
+  AudioOrchestratorHealthCheckTimeoutSeconds:
+    Type: Number
+    Default: 5
+  AudioOrchestratorHealthyThresholdCount:
+    Type: Number
+    Default: 2
+  AudioOrchestratorUnhealthyThresholdCount:
+    Type: Number
+    Default: 2
+  
+Resources:
+  FargateCluster: #LogicalName
+    # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ecs-cluster.html
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub "${AWS::StackName}FargateCluster"
+      CapacityProviders:
+        - FARGATE
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+      Configuration:
+        ExecuteCommandConfiguration:
+          # KmsKeyId: !Ref KmsKeyId
+          Logging: DEFAULT
+      ServiceConnectDefaults:
+        Namespace: convo-stream
+  ALB:
+    # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-elasticloadbalancingv2-loadbalancer.html
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub "${AWS::StackName}ALB"
+      Type: application
+      IpAddressType: ipv4
+      # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-elasticloadbalancingv2-loadbalancer-loadbalancerattributes.html
+      Scheme: internet-facing
+      SecurityGroups:
+        - !GetAtt  ALBSG.GroupId
+      Subnets:
+        Fn::Split:
+          - ","
+          - Fn::ImportValue:
+              !Sub "${NetworkingStack}PublicSubnetIds"
+      LoadBalancerAttributes:
+        - Key: routing.http2.enabled
+          Value: true
+        - Key: routing.http.preserve_host_header.enabled
+          Value: false
+        - Key: deletion_protection.enabled
+          Value: false
+        - Key: load_balancing.cross_zone.enabled
+          Value: true
+        - Key: access_logs.s3.enabled
+          Value: false
+        # In-case we want to turn on logs
+        # - Name: access_logs.s3.bucket
+        #   Value: bucket-name
+        # - Name: access_logs.s3.prefix
+        #   Value: ""
+  HTTPListener:
+    # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-elasticloadbalancingv2-listener.html
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      Protocol: HTTP
+      Port: 80
+      LoadBalancerArn: !Ref ALB
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref AudioOrchestratorTG
+  ALBSG:
+    # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-security-group.html
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "${AWS::StackName}AlbSG"
+      GroupDescription: Public Facing SG for out ConvoStream ALB
+      VpcId:
+        Fn::ImportValue:
+          !Sub ${NetworkingStack}VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: '0.0.0.0/0'
+          Description: INTERNET HTTP
+  ServiceSG:
+    # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-security-group.html
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "${AWS::StackName}ServSG"
+      GroupDescription: Security Group for Fargate Services for ConvoStream
+      VpcId:
+        Fn::ImportValue:
+          !Sub ${NetworkingStack}VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          SourceSecurityGroupId: !GetAtt ALBSG.GroupId
+          FromPort: !Ref AudioOrchestratorPort
+          ToPort: !Ref AudioOrchestratorPort
+          Description: ALB HTTP
+  AudioOrchestratorTG:
+    # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-elasticloadbalancingv2-targetgroup.html
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      #Name: !Sub "${AWS::StackName}AudioOrchestratorTG"
+      Port: !Ref AudioOrchestratorPort
+      HealthCheckEnabled: true
+      HealthCheckProtocol: !Ref AudioOrchestratorHealthCheckProtocol
+      HealthCheckIntervalSeconds: !Ref AudioOrchestratorHealthCheckIntervalSeconds
+      HealthCheckPath: !Ref AudioOrchestratorHealthCheckPath
+      HealthCheckPort: !Ref UpdatedAudioOrchestratorHealthCheckPort
+      HealthCheckTimeoutSeconds: !Ref AudioOrchestratorHealthCheckTimeoutSeconds
+      HealthyThresholdCount: !Ref AudioOrchestratorHealthyThresholdCount
+      UnhealthyThresholdCount: !Ref AudioOrchestratorUnhealthyThresholdCount
+      IpAddressType: ipv4
+      Matcher: 
+        HttpCode: 200
+      Protocol: HTTP
+      ProtocolVersion: HTTP1
+      TargetType: ip
+      TargetGroupAttributes: 
+        - Key: deregistration_delay.timeout_seconds
+          Value: 0
+      VpcId:
+        Fn::ImportValue:
+          !Sub ${NetworkingStack}VpcId
+      Tags:
+        - Key: target-group-name
+          Value: audio-orchestrator
+Outputs:
+  ClusterName:
+    Value: !Ref FargateCluster
+    Export:
+      Name: !Sub "${AWS::StackName}ClusterName"
+  SerivceSecurityGroupId:
+    Value: !GetAtt ServiceSG.GroupId
+    Export:
+      Name: !Sub "${AWS::StackName}SerivceSecurityGroupId"
+  ALBSecurityGroupId:
+    Value: !GetAtt ALBSG.GroupId
+    Export:
+      Name: !Sub "${AWS::StackName}ALBSecurityGroupId"
+  AudioOrchestratorTGArn:
+    Value: !Ref AudioOrchestratorTG
+    Export:
+      Name: !Sub "${AWS::StackName}AudioOrchestratorTGArn"

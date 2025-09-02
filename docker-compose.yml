@@ -1,0 +1,20 @@
+services:
+  audio-orchestrator:
+    env_file:
+      - ./audio-orchestrator/.env.local
+    build:
+      context: .
+      dockerfile: dockerfile
+    healthcheck:
+      test: ["CMD-SHELL", "bin/health-check"]
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+    restart: unless-stopped
+
+

@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [[ -z "${AWS_ACCOUNT_ID:-}" || -z "${AWS_DEFAULT_REGION:-}" ]]; then
+  echo "AWS_ACCOUNT_ID and AWS_DEFAULT_REGION must be set" >&2
+  exit 1
+fi
+
+ECR_IMAGE="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/convo-stream:latest"
+
+# Build and push multi-arch image directly to ECR (no local tag needed)
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  -t "$ECR_IMAGE" \
+  --push \
+  .
+

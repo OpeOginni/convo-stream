@@ -15,7 +15,8 @@ export const elevenlabs = new ElevenLabsClient({
 });
 
 // TTS Configuration
-const DEFAULT_VOICE_ID = "zmcVlqmyk3Jpn5AVYcAL"; // Rachel voice
+// const DEFAULT_VOICE_ID = "zmcVlqmyk3Jpn5AVYcAL"; // Rachel voice
+const DEFAULT_VOICE_ID = "a1TnjruAs5jTzdrjL8Vd"; // Amy voice
 const DEFAULT_MODEL_ID = "eleven_flash_v2_5";
 const DEFAULT_LANGUAGE_CODE = "en";
 
@@ -39,7 +40,7 @@ export const generateTTS = async (
       voiceSettings: {
         speed: 0.9,
         stability: 0.8
-      }
+      },
     });
 
     console.log(`✅ TTS generated successfully for voice: ${voiceId}`);

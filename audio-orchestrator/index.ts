@@ -18,16 +18,14 @@ import {
 // Import TTS generation
 import { generateTTS, isTTSAvailable } from './ai/eleven-lab';
 
-// Import HTML file for serving
-import indexHtml from './client-example.html';
+import indexHtml from "./client-example.html" with { type: "text" };
 
 // Import Express and Socket.IO
 import express from 'express';
 import { createServer } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
-import { readFileSync } from 'fs';
-import { join } from 'path';
 import type { LanguageCode } from '@aws-sdk/client-transcribe-streaming';
+import { join } from 'path';
 
 console.log('🔧 Loading AWS Transcribe module...');
 
@@ -392,6 +390,13 @@ const startSmartTranscription = async (sessionId: string, userId: string) => {
               session.currentTTSController.abort();
               session.isTTSPlaying = false;
               session.currentTTSController = undefined;
+              // Notify client to stop any ongoing playback immediately
+              try {
+                session.socket?.emit('tts-stop', {
+                  reason: 'interrupted',
+                  timestamp: Date.now()
+                });
+              } catch {}
               wasInterrupted = true;
             }
 
@@ -437,12 +442,18 @@ const startSmartTranscription = async (sessionId: string, userId: string) => {
               session.aiResponseTimer = undefined;
             }
 
-            // Start new 2-second timer (reduced for faster response with TTS)
-            session.aiResponseTimer = setTimeout(async () => {
-              console.log(`⏰ 2-second timeout reached for session ${sessionId}, processing ${session.transcriptBuffer.length} buffered transcripts`);
+            if (wasInterrupted) {
+              // Process immediately on interruption to prioritize fresh user speech
+              console.log(`⚡ Immediate processing due to interruption for session ${sessionId}`);
               await processBufferedTranscripts(sessionId);
-              session.aiResponseTimer = undefined;
-            }, 2000); // 2 seconds
+            } else {
+              // Start new 2-second timer (reduced for faster response with TTS)
+              session.aiResponseTimer = setTimeout(async () => {
+                console.log(`⏰ 2-second timeout reached for session ${sessionId}, processing ${session.transcriptBuffer.length} buffered transcripts`);
+                await processBufferedTranscripts(sessionId);
+                session.aiResponseTimer = undefined;
+              }, 2000); // 2 seconds
+            }
             }
           }
 
@@ -924,14 +935,14 @@ const io = new SocketIOServer(server, {
 
 // Middleware
 app.use(express.json());
-app.use(express.static(join(__dirname, 'public')));
+app.use(express.static(join(__dirname, 'dist')));
 
 // Routes
 app.get('/', (req, res) => {
   res.send(indexHtml);
 });
 
-app.get('/health', (req, res) => {
+app.get('/health-check', (req, res) => {
   res.json({
     status: 'ok',
     activeSessions: sessions.size,

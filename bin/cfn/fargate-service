@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -e #stops the execution of the script if it fails
+
+CFN_PATH="./aws/cfn/fargate-service/template.yaml"
+
+BUCKET="cfn-artifacts-convo-stream"
+REGION="eu-central-1"
+STACK_NAME="ConvoStreamFargateService"
+
+aws cloudformation deploy \
+  --stack-name $STACK_NAME \
+  --s3-bucket $BUCKET \
+  --s3-prefix fargate-service \
+  --region $REGION \
+  --template-file $CFN_PATH \
+  --no-execute-changeset \
+  --tags group=convo-stream-fargate-service \
+  --capabilities CAPABILITY_NAMED_IAM
