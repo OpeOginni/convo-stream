@@ -14,6 +14,10 @@ End-to-end, low-latency voice conversation system on AWS. Users speak; we transc
 - Amazon Application Load Balancer
 - Amazon ECR (container registry)
 
+## Architecture Diagram
+
+![Arch Diagram](https://github.com/OpeOginni/convo-stream/blob/main/Architectural%20Diagram.jpeg)
+
 ## Repository Structure
 
 ```
