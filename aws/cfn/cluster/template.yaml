@@ -5,12 +5,9 @@ Description: |
   - Application Load Balanacer (ALB)
     - ipv4 only
     - internet facing
-    - certificate attached from Amazon Certification Manager (ACM)
   - ALB Security Group
-  - HTTPS Listerner
-    - send naked domain to audio-orchestrator Target Group
   - HTTP Listerner
-    - redirects to HTTPS Listerner
+    - send naked domain to audio-orchestrator Target Group
   - AudioOrchestrator Target Group
 
 Parameters:
