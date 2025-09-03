@@ -1,0 +1,71 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: |
+  CloudFront Distribution
+  Providing HTTPS access to the audio-orchestrator
+
+Parameters:
+  CloudFrontStack:
+    Type: String
+    Description: This is our cloudfront layer eg. CloudFront Distribution, Origin Request Policy
+    Default: ConvoStreamCloudFront
+  OriginId:
+    Type: String
+    Description: This is the origin id of the CloudFront Distribution
+    Default: ConvoStreamCloudFrontOriginId
+  # https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/using-managed-cache-policies.html#managed-cache-policy-caching-disabled
+  DisabledCachingManagedPolicyId: 
+    Type: String
+    Description: This is the id of the disabled caching managed policy
+    Default: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+  ALBHTTPDomainNameExportName:
+    Type: String
+    Description: This is the export name of the ALB HTTP domain name
+    Default: ConvoStreamClusterALBHTTPDomainName
+
+Resources: 
+  CloudFrontDistributionOriginRequestPolicy:
+    Type: AWS::CloudFront::OriginRequestPolicy
+    Properties:
+      OriginRequestPolicyConfig:
+        Name: !Sub "${AWS::StackName}CloudFrontDistributionOriginRequestPolicy"
+        Comment: "Forward all viewer headers (needed for WebSocket)"
+        HeadersConfig:
+          HeaderBehavior: whitelist
+          Headers:
+            - Sec-WebSocket-Key
+            - Sec-WebSocket-Version
+            - Sec-WebSocket-Protocol
+            - Sec-WebSocket-Accept
+            - Sec-WebSocket-Extensions
+        CookiesConfig:
+          CookieBehavior: none
+        QueryStringsConfig:
+          QueryStringBehavior: all
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Origins:
+          - DomainName: 
+              Fn::ImportValue:
+                !Ref ALBHTTPDomainNameExportName
+            Id: 
+              !Ref OriginId
+            CustomOriginConfig:
+              HTTPPort: 80
+              OriginProtocolPolicy: http-only
+        DefaultCacheBehavior:
+          TargetOriginId: !Ref OriginId
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - HEAD
+            - DELETE
+            - POST
+            - GET
+            - OPTIONS
+            - PUT
+            - PATCH
+          CachePolicyId: !Ref DisabledCachingManagedPolicyId
+          OriginRequestPolicyId: !Ref CloudFrontDistributionOriginRequestPolicy
+

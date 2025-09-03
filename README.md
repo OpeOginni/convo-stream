@@ -30,11 +30,13 @@ convo-stream/
 │   └── cfn/
 │       ├── networking/template.yaml       # VPC + Subnets + etc
 │       ├── cluster/template.yaml          # ECS cluster + ALB + Target Groups
-│       └── fargate-service/template.yaml  # Task Definition + Service
+│       ├── fargate-service/template.yaml  # Task Definition + Service
+│       └── cloudfront/template.yaml       # CloudFront distribution (HTTPS in front of ALB)
 ├── bin/
 │   ├── cfn/networking            # Deploy networking stack
 │   ├── cfn/cluster               # Deploy cluster stack
-│   └── cfn/fargate-service       # Deploy service stack
+│   ├── cfn/fargate-service       # Deploy service stack
+│   └── cfn/cloudfront            # Deploy CloudFront stack (HTTPS + WebSockets)
 │   └── ecr/
 │       ├── login                 # ECR login
 │       ├── build-push-ecr-image  # Buildx multi-arch build + push to ECR
@@ -142,7 +144,28 @@ bin/cfn/cluster
 # Service (Task Definition + Service)
 chmod u+x bin/cfn/fargate-service
 bin/cfn/fargate-service
+
+# CloudFront (HTTPS in front of ALB; WebSocket-enabled)
+chmod u+x bin/cfn/cloudfront
+bin/cfn/cloudfront
 ```
+
+### HTTPS via CloudFront (WebSockets)
+
+We added CloudFront in front of the ALB to provide HTTPS while keeping the ALB origin on HTTP. CloudFront Viewer policy is set to `redirect-to-https`, and the origin protocol policy is `http-only` pointing to the ALB DNS.
+
+To make WebSockets work through CloudFront, we forward the recommended WebSocket headers in the Origin Request Policy:
+
+- `Sec-WebSocket-Key`
+- `Sec-WebSocket-Version`
+- `Sec-WebSocket-Protocol`
+- `Sec-WebSocket-Accept`
+- `Sec-WebSocket-Extensions`
+
+Reference: [AWS docs — Use WebSockets with CloudFront distributions](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/distribution-working-with.websockets.html#distribution-working-with.websockets.recomended-settings)
+
+Note:
+- If you customize the export name for the ALB HTTP domain in the cluster stack, pass the matching value to the CloudFront template parameter `ALBHTTPDomainNameExportName` at deploy time.
 
 ## Debugging in Production (ECS Exec)
 
